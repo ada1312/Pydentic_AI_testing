@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: "{{ doc('stg_orders_desc') }}"
+    columns:
+      - name: order_id
+        description: "{{ doc('order_id_desc') }}"
+        tests:
+          - unique
+          - not_null
+      - name: status
+        description: "todo"
+        tests:
+          - accepted_values:
+              values: ["placed", "shipped", "completed"]
+      - name: created_at
+        description: "{{ doc('created_at_desc') }}"
+  - name: stg_customers
+    description: "{{ doc('stg_customers_desc') }}"
+    columns:
+      - name: customer_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: email
+        description: "{{ doc('email_desc') }}"
+      - name: marketing_opt_in
+        description: "{{ doc('marketing_opt_in_desc') }}"
