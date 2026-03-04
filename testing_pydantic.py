@@ -244,20 +244,25 @@ def resolve_description(
 # Initialize Pydantic AI assessment agent with Ollama (local, no API key needed)
 try:
     # Agent with generic type parameter for result type
+    # The generic type Agent[DescriptionAssessment, None] tells Pydantic AI what to return
     assessment_agent: Agent[DescriptionAssessment, None] = Agent(
-        'ollama:llama3.2',  # Use Ollama Llama 3.2 model (local)
+        'ollama:qwen2.5',  # Use Ollama Qwen 2.5 model (local, faster and higher quality than llama3.2)
         system_prompt="""You are an expert documentation quality assessor for database schemas.
-        
+
+To provide structured output, follow this JSON format in your response:
+{
+  "score": <0-100 integer>,
+  "issues": [
+    {"severity": "CRITICAL|HIGH|MEDIUM|LOW", "message": "<description>", "deduction": <0-100 int>}
+  ],
+  "suggestions": ["<suggestion1>", "<suggestion2>", "<suggestion3>"]
+}
+
 Evaluate descriptions based on these criteria:
 - CRITICAL: Missing description (score 0), placeholder text like TODO/TBD/N/A
 - HIGH: Too short (<20 chars), too generic (missing specificity)
 - MEDIUM: Too long (>300 chars), vague/generic words, redundant phrases, formatting issues
 - LOW: Missing capitalization, missing ending punctuation
-
-Return a DescriptionAssessment with:
-- score: 0-100 (100 for perfect, 0 for missing)
-- issues: List of Issue objects with severity, message, and deduction
-- suggestions: Specific, actionable improvement recommendations
 
 Be concise and practical in suggestions."""
     )
@@ -319,8 +324,26 @@ RATING SCALE:
 Provide score 0-100, list issues with severity (CRITICAL/HIGH/MEDIUM/LOW) and deductions, and 2-3 improvement suggestions."""
 
     result = await assessment_agent.run(prompt)
-    # In Pydantic AI, access the output with .output attribute
-    return result.output
+    # Parse the string output into DescriptionAssessment object
+    import json
+    try:
+        # result.data is the structured output from the LLM
+        if hasattr(result, 'data') and isinstance(result.data, DescriptionAssessment):
+            return result.data
+        # If result.output is a string, try to parse it as JSON
+        elif isinstance(result.output, str):
+            try:
+                json_data = json.loads(result.output)
+                return DescriptionAssessment(**json_data)
+            except (json.JSONDecodeError, TypeError):
+                # If JSON parsing fails, return None so fallback is used
+                return None
+        else:
+            # If it's already the right type, return it
+            return result.output if isinstance(result.output, DescriptionAssessment) else None
+    except Exception as e:
+        print(f"⚠️  Error parsing AI response: {e}", file=sys.stderr)
+        return None
 
 
 def assess_description_with_ai(
