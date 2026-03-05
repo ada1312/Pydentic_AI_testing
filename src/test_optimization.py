@@ -2,7 +2,7 @@
 """Quick test demonstrating the optimized assessment performance."""
 
 import time
-from testing_pydantic import assess_description
+from src.testing_pydantic import assess_description
 
 # Test cases showing the optimization benefits
 test_cases = [

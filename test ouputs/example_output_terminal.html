@@ -1,0 +1,90 @@
+✅ Pydantic AI initialized successfully with Ollama Qwen 2.5
+🤖 Using Pydantic AI (Ollama Qwen 2.5) for assessment...
+
+================================================================================
+🎯 SCHEMA QUALITY REPORT
+================================================================================
+
+📊 Summary Statistics:
+  Total items assessed: 8
+  Average score: 56.5/100
+  Score distribution:
+    Excellent (90-100)     0 (  0.0%) 
+    Good (70-89)           2 ( 25.0%) █████
+    Fair (50-69)           4 ( 50.0%) ██████████
+    Poor (0-49)            2 ( 25.0%) █████
+
+🚨 Items Requiring Attention:
+
+  ❌ CRITICAL (2 items) - Fix immediately:
+    • column stg_orders.status              [D] Score:  0 → Description is a single placeholder word.
+    • column stg_customers.customer_id      [D] Score: 45 → Placeholder text is used.
+
+  ⚠️  HIGH (2 items) - Address soon:
+    • model  stg_orders                     [C] Score: 65 → Too short (18 characters)
+    • model  stg_customers                  [C] Score: 65 → Too short (17 characters)
+
+  ⚡ MEDIUM (4 items) - Improve quality:
+    • column stg_orders.order_id            [B] Score: 75 → Description is too long and includes vague words (e.g., 'unique identifier').
+    • column stg_orders.created_at          [B] Score: 75 → Contains vague words like 'timestamp'.
+    • column stg_customers.email            [C] Score: 62 → Description is long (121 chars).
+    ... and 1 more
+
+================================================================================
+📈 DETAILED RATINGS BY TYPE
+================================================================================
+
+📋 TABLE (MODEL) RATINGS:
+--------------------------------------------------------------------------------
+🟡 stg_orders                     [C]  65/100
+   [HIGH    ] Too short (18 characters)
+   [LOW     ] Vague/generic wording
+   💡 Describe the specific purpose of the staging table
+   💡 Include any relevant technical details or related fields
+
+🟡 stg_customers                  [C]  65/100
+   [HIGH    ] Too short (17 characters)
+   [LOW     ] Missing ending punctuation
+   💡 Include the purpose or key fields involved.
+   💡 Add any constraints or specific usage details.
+
+📋 COLUMN RATINGS:
+--------------------------------------------------------------------------------
+  📄 stg_customers
+    ❌ customer_id                [D]  45/100
+       [CRITICAL] Placeholder text is used.
+       [HIGH    ] Description is too short (only 8 characters).
+       💡 Describe the purpose or characteristics of the primary key.
+       💡 Ensure the description meets the minimum length requirement of 20 characters.
+    🟡 email                      [C]  62/100
+       [MEDIUM  ] Description is long (121 chars).
+       [LOW     ] Missing capitalized first letter and period at the end.
+       💡 Reduce length to under 100 characters for clarity.
+       💡 Capitalize the first letter and add a period at the end.
+    🟡 marketing_opt_in           [C]  65/100
+       [MEDIUM  ] The description is too long (32 characters). It should be concise.
+       [LOW     ] The first word is not capitalized.
+       [LOW     ] Sentence ends with a period.
+       💡 Refine to 'Customer opt-in for marketing communications.'
+       💡 Ensure the description is exactly 20 characters.
+       💡 Capitalize the first word of the description.
+
+  📄 stg_orders
+    🟢 order_id                   [B]  75/100
+       [MEDIUM  ] Description is too long and includes vague words (e.g., 'unique identifier').
+       [LOW     ] Sentence starts with a lowercase letter.
+       [LOW     ] Sentence lacks ending punctuation.
+       💡 Revise the description to be more specific and concise.
+       💡 Capitalize and add a period at the end of the sentence.
+    ❌ status                     [D]   0/100
+       [CRITICAL] Description is a single placeholder word.
+       [CRITICAL] Description length is 3 characters, far below the minimum requirement.
+       💡 Replace 'todo' with a specific and precise description.
+       💡 Ensure the description is at least 20 characters long and does not contain vague or placeholder words.
+    🟢 created_at                 [B]  75/100
+       [LOW     ] Missing capitalization and ending punctuation.
+       [MEDIUM  ] Contains vague words like 'timestamp'.
+       [MEDIUM  ] Could be more specific about the source system.
+       💡 Specify the exact source system (e.g., 'Salesforce' or 'ERP').
+       💡 Clarify if it's the creation time on the source system or the time it was logged.
+       💡 Ensure full sentence structure and capitalization.
