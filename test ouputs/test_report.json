@@ -1,0 +1,223 @@
+{
+  "status": "success",
+  "metrics": {
+    "total_items": 8,
+    "total_models": 2,
+    "total_columns": 6,
+    "average_score": 55.38,
+    "excellent_count": 0,
+    "good_count": 2,
+    "fair_count": 5,
+    "poor_count": 1,
+    "critical_issues_count": 1,
+    "high_issues_count": 3,
+    "medium_issues_count": 6,
+    "low_issues_count": 9,
+    "execution_time_seconds": 47.434,
+    "timestamp": "2026-03-05T21:41:44.347314Z"
+  },
+  "results": [
+    {
+      "type": "model",
+      "name": "stg_orders",
+      "parent": null,
+      "score": 58,
+      "rating": "C",
+      "issues": [
+        {
+          "severity": "MEDIUM",
+          "message": "Too long (108 chars)",
+          "deduction": 10
+        },
+        {
+          "severity": "HIGH",
+          "message": "Generic terms used (e.g., 'staging table', 'source')",
+          "deduction": 15
+        },
+        {
+          "severity": "LOW",
+          "message": "Missing capitalization (e.g., 'customer orders')",
+          "deduction": 5
+        }
+      ],
+      "suggestions": [
+        "Rephrase to something more specific, like 'Intermediate table for cleaned customer order data used as the source for analytics.'",
+        "Ensure terms are clear and not overly generic to enhance understanding."
+      ]
+    },
+    {
+      "type": "column",
+      "name": "order_id",
+      "parent": "stg_orders",
+      "score": 75,
+      "rating": "B",
+      "issues": [
+        {
+          "severity": "MEDIUM",
+          "message": "Vague wording ('unique identifier' could be more specific)",
+          "deduction": 10
+        },
+        {
+          "severity": "LOW",
+          "message": "Missing end punctuation",
+          "deduction": 5
+        }
+      ],
+      "suggestions": [
+        "Specify the exact purpose (e.g., 'Primary key for order records')",
+        "Add the length range (e.g., '30-character alphanumeric key')"
+      ]
+    },
+    {
+      "type": "column",
+      "name": "status",
+      "parent": "stg_orders",
+      "score": 0,
+      "rating": "D",
+      "issues": [
+        {
+          "severity": "CRITICAL",
+          "message": "Description contains only 'todo'",
+          "deduction": 100
+        },
+        {
+          "severity": "HIGH",
+          "message": "Description is too short (2 characters)",
+          "deduction": 40
+        }
+      ],
+      "suggestions": [
+        "Expand the description to provide meaningful information about the column's purpose.",
+        "Avoid placeholder text and provide specific details."
+      ]
+    },
+    {
+      "type": "column",
+      "name": "created_at",
+      "parent": "stg_orders",
+      "score": 62,
+      "rating": "C",
+      "issues": [
+        {
+          "severity": "HIGH",
+          "message": "Too short (15 characters)",
+          "deduction": 10
+        },
+        {
+          "severity": "LOW",
+          "message": "Vague phrase: when the order was created",
+          "deduction": 3
+        },
+        {
+          "severity": "LOW",
+          "message": "Could improve clarity in description",
+          "deduction": 2
+        }
+      ],
+      "suggestions": [
+        "Specify the format of the timestamp (e.g., 'ISO 8601 format')",
+        "Identify the source system more specifically (e.g., 'created in the ERP system')",
+        "Add the purpose of this column for better context"
+      ]
+    },
+    {
+      "type": "model",
+      "name": "stg_customers",
+      "parent": null,
+      "score": 55,
+      "rating": "C",
+      "issues": [
+        {
+          "severity": "MEDIUM",
+          "message": "Description is too long (42 characters).",
+          "deduction": 5
+        },
+        {
+          "severity": "LOW",
+          "message": "Sentence structure is vague.",
+          "deduction": 3
+        }
+      ],
+      "suggestions": [
+        "Shorten the description to 20-30 characters.",
+        "Be more specific about the fields contained in the table."
+      ]
+    },
+    {
+      "type": "column",
+      "name": "customer_id",
+      "parent": "stg_customers",
+      "score": 65,
+      "rating": "C",
+      "issues": [
+        {
+          "severity": "MEDIUM",
+          "message": "Vague description; lacks specificity and context.",
+          "deduction": 20
+        },
+        {
+          "severity": "LOW",
+          "message": "Lacking capitalization and punctuation.",
+          "deduction": 5
+        }
+      ],
+      "suggestions": [
+        "Use precise language to describe the primary key's purpose or role in the schema.",
+        "Include any relevant details such as its function or how it relates to other data."
+      ]
+    },
+    {
+      "type": "column",
+      "name": "email",
+      "parent": "stg_customers",
+      "score": 58,
+      "rating": "C",
+      "issues": [
+        {
+          "severity": "LOW",
+          "message": "Sentence is too short.",
+          "deduction": 5
+        },
+        {
+          "severity": "MEDIUM",
+          "message": "Vague phrasing ('used for').",
+          "deduction": 20
+        },
+        {
+          "severity": "LOW",
+          "message": "Could use capitalization improvement.",
+          "deduction": 5
+        }
+      ],
+      "suggestions": [
+        "Enhance the purpose by specifying 'used for customer communication and login.'",
+        "Specify the character limit: 'Email address (minimum 20, maximum 300 characters).'",
+        "Add a note on data sensitivity: 'Sensitive customer login and communication data.'"
+      ]
+    },
+    {
+      "type": "column",
+      "name": "marketing_opt_in",
+      "parent": "stg_customers",
+      "score": 70,
+      "rating": "B",
+      "issues": [
+        {
+          "severity": "MEDIUM",
+          "message": "Description is too long (64 characters).",
+          "deduction": 10
+        },
+        {
+          "severity": "LOW",
+          "message": "Lacks specific context or detail.",
+          "deduction": 5
+        }
+      ],
+      "suggestions": [
+        "Shorten to under 30 characters for clarity.",
+        "Add context, e.g., 'Indicates if the customer has opted into marketing emails."
+      ]
+    }
+  ],
+  "error_message": null
+}

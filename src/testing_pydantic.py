@@ -16,12 +16,23 @@ except ImportError:
 # Now import the rest
 import argparse
 import asyncio
+import json
+import logging
 import re
 import sys
+import time
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 try:
     import yaml
@@ -642,6 +653,32 @@ class ItemResult(BaseModel):
     suggestions: List[str]
 
 
+class AssessmentMetrics(BaseModel):
+    """Metrics for tracking assessment performance and results."""
+    total_items: int
+    total_models: int
+    total_columns: int
+    average_score: float
+    excellent_count: int  # 90-100
+    good_count: int  # 70-89
+    fair_count: int  # 50-69
+    poor_count: int  # 0-49
+    critical_issues_count: int
+    high_issues_count: int
+    medium_issues_count: int
+    low_issues_count: int
+    execution_time_seconds: float
+    timestamp: str
+
+
+class SchemaAssessmentReport(BaseModel):
+    """Complete schema assessment report with results and metrics."""
+    status: str  # "success" or "error"
+    metrics: AssessmentMetrics
+    results: List[ItemResult]
+    error_message: Optional[str] = None
+
+
 def load_schema(path: Path) -> DbtSchema:
     """Load and validate a dbt schema.yml file.
     
@@ -659,33 +696,100 @@ def load_schema(path: Path) -> DbtSchema:
     return DbtSchema.model_validate(data)
 
 
-def report_schema(schema: DbtSchema, docs: Dict[str, str]) -> None:
-    """
-    Print comprehensive quality report using Pydantic AI assessment.
+def compute_metrics(results: List[ItemResult], execution_time: float) -> AssessmentMetrics:
+    """Compute comprehensive metrics from assessment results.
     
-    Uses OpenAI GPT-4o via Pydantic AI to evaluate all descriptions.
-    No rule-based fallback - pure AI assessment for testing.
-    
-    Workflow:
-    1. Collect AI assessment results for all models and columns
-    2. Print executive summary with statistics
-    3. Group and display items needing attention by severity
-    4. Show detailed breakdown of all assessments organized by type
+    Args:
+        results: List of ItemResult objects
+        execution_time: Total execution time in seconds
+        
+    Returns:
+        AssessmentMetrics with statistics and counts
     """
+    total_items = len(results)
+    total_models = len([r for r in results if r.type == "model"])
+    total_columns = len([r for r in results if r.type == "column"])
+    avg_score = sum(r.score for r in results) / total_items if total_items > 0 else 0
+    
+    excellent_count = len([r for r in results if r.score >= 90])
+    good_count = len([r for r in results if 70 <= r.score < 90])
+    fair_count = len([r for r in results if 50 <= r.score < 70])
+    poor_count = len([r for r in results if r.score < 50])
+    
+    # Count issues by severity
+    critical_issues = sum(len([i for i in r.issues if i.severity == "CRITICAL"]) for r in results)
+    high_issues = sum(len([i for i in r.issues if i.severity == "HIGH"]) for r in results)
+    medium_issues = sum(len([i for i in r.issues if i.severity == "MEDIUM"]) for r in results)
+    low_issues = sum(len([i for i in r.issues if i.severity == "LOW"]) for r in results)
+    
+    return AssessmentMetrics(
+        total_items=total_items,
+        total_models=total_models,
+        total_columns=total_columns,
+        average_score=round(avg_score, 2),
+        excellent_count=excellent_count,
+        good_count=good_count,
+        fair_count=fair_count,
+        poor_count=poor_count,
+        critical_issues_count=critical_issues,
+        high_issues_count=high_issues,
+        medium_issues_count=medium_issues,
+        low_issues_count=low_issues,
+        execution_time_seconds=round(execution_time, 3),
+        timestamp=datetime.utcnow().isoformat() + "Z"
+    )
+
+
+def assess_schema(schema: DbtSchema, docs: Dict[str, str]) -> SchemaAssessmentReport:
+    """
+    Assess schema quality and return structured report.
+    
+    Uses Pydantic AI assessment to evaluate all descriptions and returns
+    structured metrics and results suitable for both JSON output and logging.
+    
+    Args:
+        schema: DbtSchema object parsed from YAML
+        docs: Dictionary of {name: body} from loaded markdown docs
+        
+    Returns:
+        SchemaAssessmentReport with metrics, results, and status
+    """
+    start_time = time.time()
+    
     # Check AI availability upfront
     if not AI_ENABLED or assessment_agent is None:
-        print("❌ ERROR: Pydantic AI assessment is not available!")
-        print("   Please ensure Ollama is running: ollama serve")
-        print("   And qwen2.5 model is installed: ollama pull qwen2.5")
-        return
+        logger.error("AI assessment unavailable - Ollama not running or qwen2.5 not installed")
+        return SchemaAssessmentReport(
+            status="error",
+            metrics=AssessmentMetrics(
+                total_items=0,
+                total_models=0,
+                total_columns=0,
+                average_score=0,
+                excellent_count=0,
+                good_count=0,
+                fair_count=0,
+                poor_count=0,
+                critical_issues_count=0,
+                high_issues_count=0,
+                medium_issues_count=0,
+                low_issues_count=0,
+                execution_time_seconds=0,
+                timestamp=datetime.utcnow().isoformat() + "Z"
+            ),
+            results=[],
+            error_message="AI assessment unavailable - ensure Ollama is running (ollama serve) and qwen2.5 is installed"
+        )
     
-    print("🤖 Using Pydantic AI (Ollama Qwen 2.5) for assessment...\n")
+    logger.info(f"Starting schema assessment with Ollama Qwen 2.5")
     
     results: List[ItemResult] = []
     
-    # Collect all assessment results with optimized baseline checks
+    # Collect all assessment results
     for model in schema.models:
-        # Assess model description using AI (with rule-based fallback)
+        logger.debug(f"Assessing model: {model.name}")
+        
+        # Assess model description using AI
         model_desc, model_doc_issues = resolve_description(model.description, docs)
         model_assessment = assess_description_with_ai(model_desc)
         
@@ -704,6 +808,8 @@ def report_schema(schema: DbtSchema, docs: Dict[str, str]) -> None:
         
         # Assess each column with AI-powered assessment
         for col in model.columns:
+            logger.debug(f"Assessing column: {model.name}.{col.name}")
+            
             col_desc, col_doc_issues = resolve_description(col.description, docs)
             col_assessment = assess_description_with_ai(col_desc)
             all_col_issues = col_doc_issues + col_assessment.issues
@@ -719,131 +825,112 @@ def report_schema(schema: DbtSchema, docs: Dict[str, str]) -> None:
             )
             results.append(col_result)
     
+    execution_time = time.time() - start_time
+    metrics = compute_metrics(results, execution_time)
+    
+    logger.info(f"Assessment complete: {metrics.total_items} items in {execution_time:.2f}s, avg score: {metrics.average_score}")
+    
+    return SchemaAssessmentReport(
+        status="success",
+        metrics=metrics,
+        results=results
+    )
+
+
+def print_human_readable_report(report: SchemaAssessmentReport) -> None:
+    """
+    Print human-readable console report from assessment results.
+    
+    Args:
+        report: SchemaAssessmentReport with metrics and results
+    """
+    if report.status == "error":
+        print("❌ ERROR: Schema assessment failed!")
+        print(f"   {report.error_message}")
+        return
+    
+    metrics = report.metrics
+    results = report.results
+    
+    print("🤖 Using Pydantic AI (Ollama Qwen 2.5) for assessment...\n")
+    
     # Print Executive Summary
     print("=" * 80)
     print("🎯 SCHEMA QUALITY REPORT")
     print("=" * 80)
     print()
     
-    total_items = len(results)
-    avg_score = sum(r.score for r in results) / total_items if total_items > 0 else 0
-    
     score_ranges = {
-        "Excellent (90-100)": len([r for r in results if r.score >= 90]),
-        "Good (70-89)": len([r for r in results if 70 <= r.score < 90]),
-        "Fair (50-69)": len([r for r in results if 50 <= r.score < 70]),
-        "Poor (0-49)": len([r for r in results if r.score < 50]),
+        "Excellent (90-100)": metrics.excellent_count,
+        "Good (70-89)": metrics.good_count,
+        "Fair (50-69)": metrics.fair_count,
+        "Poor (0-49)": metrics.poor_count,
     }
     
     print(f"📊 Summary Statistics:")
-    print(f"  Total items assessed: {total_items}")
-    print(f"  Average score: {avg_score:.1f}/100")
+    print(f"  Total items: {metrics.total_items} (models: {metrics.total_models}, columns: {metrics.total_columns})")
+    print(f"  Average score: {metrics.average_score}/100")
+    print(f"  Execution time: {metrics.execution_time_seconds}s")
+    print(f"  Issues found: CRITICAL={metrics.critical_issues_count}, HIGH={metrics.high_issues_count}, MEDIUM={metrics.medium_issues_count}, LOW={metrics.low_issues_count}")
     print(f"  Score distribution:")
     for range_name, count in score_ranges.items():
-        pct = (count / total_items * 100) if total_items > 0 else 0
+        pct = (count / metrics.total_items * 100) if metrics.total_items > 0 else 0
         bar = "█" * int(pct / 5)  # 20 chars max
         print(f"    {range_name:20} {count:3} ({pct:5.1f}%) {bar}")
     print()
     
-    # Efficiently group items by severity for targeted attention
-    all_issues = []
-    for result in results:
-        for issue in result.issues:
-            all_issues.append((result, issue))
-    
+    # Group items by severity for targeted attention
     critical_results = [r for r in results if any(i.severity == "CRITICAL" for i in r.issues)]
     high_results = [r for r in results if any(i.severity == "HIGH" for i in r.issues) and r not in critical_results]
     medium_results = [r for r in results if any(i.severity == "MEDIUM" for i in r.issues) and r not in critical_results and r not in high_results]
     
-    # Print items needing attention with severity prioritization
+    # Print items needing attention
     if critical_results or high_results or medium_results:
         print("🚨 Items Requiring Attention:")
         print()
         
         if critical_results:
-            print(f"  ❌ CRITICAL ({len(critical_results)} items) - Fix immediately:")
+            print(f"  ❌ CRITICAL ({len(critical_results)} items):")
             for item in critical_results[:5]:
                 location = f"{item.parent}.{item.name}" if item.parent else item.name
                 critical_issues = [i.message for i in item.issues if i.severity == "CRITICAL"]
-                print(f"    • {item.type:6} {location:30} [{item.rating}] Score:{item.score:3} → {critical_issues[0]}")
+                print(f"    • {location:35} Score:{item.score:3} → {critical_issues[0]}")
             if len(critical_results) > 5:
                 print(f"    ... and {len(critical_results) - 5} more")
             print()
         
         if high_results:
-            print(f"  ⚠️  HIGH ({len(high_results)} items) - Address soon:")
+            print(f"  ⚠️  HIGH ({len(high_results)} items):")
             for item in high_results[:5]:
                 location = f"{item.parent}.{item.name}" if item.parent else item.name
                 high_issues = [i.message for i in item.issues if i.severity == "HIGH"]
-                print(f"    • {item.type:6} {location:30} [{item.rating}] Score:{item.score:3} → {high_issues[0]}")
+                print(f"    • {location:35} Score:{item.score:3} → {high_issues[0]}")
             if len(high_results) > 5:
                 print(f"    ... and {len(high_results) - 5} more")
             print()
         
         if medium_results:
-            print(f"  ⚡ MEDIUM ({len(medium_results)} items) - Improve quality:")
+            print(f"  ⚡ MEDIUM ({len(medium_results)} items):")
             for item in medium_results[:3]:
                 location = f"{item.parent}.{item.name}" if item.parent else item.name
                 medium_issues = [i.message for i in item.issues if i.severity == "MEDIUM"]
-                print(f"    • {item.type:6} {location:30} [{item.rating}] Score:{item.score:3} → {medium_issues[0]}")
+                print(f"    • {location:35} Score:{item.score:3} → {medium_issues[0]}")
             if len(medium_results) > 3:
                 print(f"    ... and {len(medium_results) - 3} more")
             print()
     else:
         print("✅ No critical issues found!\n")
+
+
+def report_schema(schema: DbtSchema, docs: Dict[str, str]) -> None:
+    """
+    Print comprehensive quality report using Pydantic AI assessment.
     
-    # Detailed breakdown organized by type
-    print("=" * 80)
-    print("📈 DETAILED RATINGS BY TYPE")
-    print("=" * 80)
-    print()
-    
-    # TABLE/MODEL RATINGS
-    print("📋 TABLE (MODEL) RATINGS:")
-    print("-" * 80)
-    model_results = [r for r in results if r.type == "model"]
-    if model_results:
-        for result in model_results:
-            rating_icon = "✅" if result.rating == "A" else "🟢" if result.rating == "B" else "🟡" if result.rating == "C" else "❌"
-            print(f"{rating_icon} {result.name:30} [{result.rating}] {result.score:3}/100")
-            if result.issues:
-                for issue in result.issues:
-                    print(f"   [{issue.severity:8}] {issue.message}")
-            if result.suggestions:
-                for suggestion in result.suggestions:
-                    print(f"   💡 {suggestion}")
-            print()
-    else:
-        print("  (No models found)")
-        print()
-    
-    # COLUMN RATINGS
-    print("📋 COLUMN RATINGS:")
-    print("-" * 80)
-    column_results = [r for r in results if r.type == "column"]
-    if column_results:
-        # Group columns by parent model for efficient review
-        columns_by_model: Dict[str, List[ItemResult]] = {}
-        for col_result in column_results:
-            if col_result.parent not in columns_by_model:
-                columns_by_model[col_result.parent] = []
-            columns_by_model[col_result.parent].append(col_result)
-        
-        for model_name in sorted(columns_by_model.keys()):
-            print(f"  📄 {model_name}")
-            for col_result in columns_by_model[model_name]:
-                rating_icon = "✅" if col_result.rating == "A" else "🟢" if col_result.rating == "B" else "🟡" if col_result.rating == "C" else "❌"
-                print(f"    {rating_icon} {col_result.name:26} [{col_result.rating}] {col_result.score:3}/100")
-                if col_result.issues and col_result.score < 80:  # Only show issues for lower-scoring items
-                    for issue in col_result.issues:
-                        print(f"       [{issue.severity:8}] {issue.message}")
-                if col_result.suggestions and col_result.score < 80:
-                    for suggestion in col_result.suggestions:
-                        print(f"       💡 {suggestion}")
-            print()
-    else:
-        print("  (No columns found)")
-        print()
+    Legacy function - calls assess_schema and prints human-readable output.
+    For structured output, use assess_schema() directly.
+    """
+    report = assess_schema(schema, docs)
+    print_human_readable_report(report)
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -856,12 +943,16 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         Namespace with attributes:
         - schema (Path): Path to dbt schema.yml file
         - docs (List[Path]): Paths to markdown docs files (repeatable)
+        - json_output (bool): Whether to output JSON instead of human-readable
+        - output_file (Path): Optional path to write JSON output
         
     Example:
-        python testing_pydantic.py sample_schema.yml --docs schema_docs.md
+        python testing_pydantic.py sample_schema.yml
+        python testing_pydantic.py sample_schema.yml --json
+        python testing_pydantic.py sample_schema.yml --json --output report.json
     """
     parser = argparse.ArgumentParser(
-        description="Score dbt schema descriptions against basic rules."
+        description="Score dbt schema descriptions with AI-powered assessment."
     )
     parser.add_argument("schema", type=Path, help="Path to dbt schema.yml")
     parser.add_argument(
@@ -870,6 +961,21 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         action="append",
         default=[],
         help="Path to dbt docs .md file (repeatable).",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output structured JSON instead of human-readable format (cloud-ready)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Write JSON output to file (requires --json)",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging",
     )
     return parser.parse_args(list(argv)[1:])
 
@@ -882,30 +988,81 @@ def main(argv: Sequence[str]) -> int:
     2. Auto-discover .md files in schema directory if --docs not provided
     3. Load and parse all docs blocks from markdown files
     4. Load and validate schema.yml with Pydantic
-    5. Report scores for each model and column description
+    5. Assess and report scores for each model and column description
+    6. Output as JSON (--json) or human-readable format (default)
     
     Returns:
-        Exit code (0=success, 2=error)
+        Exit code (0=success, 1=assessment issues, 2=error)
         
     Example:
         python testing_pydantic.py sample_schema.yml
-        python testing_pydantic.py sample_schema.yml --docs schema_docs.md --docs extra.md
+        python testing_pydantic.py sample_schema.yml --json --output report.json
+        python testing_pydantic.py sample_schema.yml --docs schema_docs.md --verbose
     """
     args = parse_args(argv)
+    
+    # Configure logging based on verbosity
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
 
     path = args.schema
     if not path.exists():
-        print(f"File not found: {path}")
+        logger.error(f"Schema file not found: {path}")
+        print(f"❌ ERROR: File not found: {path}", file=sys.stderr)
         return 2
 
+    # Load docs
     docs_paths = args.docs
     if not docs_paths:
         docs_paths = sorted(path.parent.glob("*.md"))
-
+    
+    logger.info(f"Loading docs from {len(docs_paths)} file(s)")
     docs = load_docs(docs_paths)
-    schema = load_schema(path)
-    report_schema(schema, docs)
-    return 0
+    
+    # Load and assess schema
+    try:
+        logger.info(f"Loading schema from {path}")
+        schema = load_schema(path)
+    except Exception as e:
+        logger.error(f"Failed to load schema: {e}")
+        print(f"❌ ERROR: Failed to load schema: {e}", file=sys.stderr)
+        return 2
+    
+    # Run assessment
+    try:
+        report = assess_schema(schema, docs)
+    except Exception as e:
+        logger.error(f"Assessment failed: {e}")
+        print(f"❌ ERROR: Assessment failed: {e}", file=sys.stderr)
+        return 2
+    
+    # Output results
+    if args.json:
+        # JSON output mode (cloud-ready)
+        json_output = report.model_dump_json(indent=2)
+        
+        if args.output:
+            # Write to file
+            logger.info(f"Writing JSON output to {args.output}")
+            args.output.write_text(json_output, encoding="utf-8")
+            print(f"✅ Report written to {args.output}", file=sys.stderr)
+        else:
+            # Print to stdout
+            print(json_output)
+    else:
+        # Human-readable output mode
+        print_human_readable_report(report)
+    
+    # Return exit code based on status and quality
+    if report.status == "error":
+        return 2
+    elif report.metrics.critical_issues_count > 0 or report.metrics.average_score < 50:
+        logger.warning(f"Quality issues detected: {report.metrics.critical_issues_count} critical issues")
+        return 1
+    else:
+        logger.info("Assessment completed successfully")
+        return 0
 
 
 if __name__ == "__main__":
